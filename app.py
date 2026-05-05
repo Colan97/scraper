@@ -243,7 +243,7 @@ if run_btn:
     disp["Your Site"] = disp["Your Site"].apply(lambda x: "✅ YES" if x else "")
 
     st.dataframe(
-        disp.style.apply(style_row, axis=1).applymap(rank_color, subset=["Rank"]),
+        disp.style.apply(style_row, axis=1).map(rank_color, subset=["Rank"]),  # fixed: applymap → map
         use_container_width=True, height=500, hide_index=True
     )
 
@@ -283,7 +283,7 @@ if run_btn:
             return ""
 
         st.dataframe(
-            pd.DataFrame(summary).style.applymap(color_rank, subset=["Your rank"]),
+            pd.DataFrame(summary).style.map(color_rank, subset=["Your rank"]),  # fixed: applymap → map
             use_container_width=True, hide_index=True
         )
 
