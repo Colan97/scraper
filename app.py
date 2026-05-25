@@ -4,10 +4,10 @@ import base64
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="ChatGPT Source Rank Tracker – India/Delhi", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="ChatGPT Source Rank Tracker – Localized", page_icon="🎯", layout="wide")
 
 st.title("🎯 ChatGPT Source Rank Tracker")
-st.markdown("**📍 India (Delhi targeted)** — Enter prompts → see which URLs ChatGPT cites & where YOUR site ranks.")
+st.markdown("**📍 Track AI Search Rankings** — Enter prompts → see which URLs ChatGPT cites & where YOUR site ranks.")
 st.markdown("---")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -16,18 +16,31 @@ with st.sidebar:
     st.markdown("Get from [DataForSEO Dashboard](https://app.dataforseo.com/api-access)")
     api_login    = st.text_input("Login (email)", placeholder="you@example.com")
     api_password = st.text_input("Password", type="password")
+    
     st.markdown("---")
-    st.markdown("**📍 Location:** India (country-level — confirmed supported)")
+    st.header("🌍 Location Targeting")
+    st.markdown("Target at the **Country** or **State** level.")
+    
+    # Let the user choose between Name (String) or Code (Integer)
+    targeting_type = st.radio("Targeting Method", ["Location Name (Easier)", "Location Code"])
+    
+    if targeting_type == "Location Name (Easier)":
+        loc_val = st.text_input("Enter State/Country Name", value="Delhi,India", help="e.g., 'Delhi,India', 'New York,United States', or 'India'")
+        payload_key = "location_name"
+    else:
+        loc_val = st.number_input("Enter Location Code", value=2356, step=1, help="e.g., 2356 for India. Query the DataForSEO locations API for specific State codes.")
+        payload_key = "location_code"
+
     st.markdown("**🌐 Language:** English")
     st.markdown("**🤖 Engine:** ChatGPT + Web Search")
     st.markdown("**💰 Cost:** ~$0.004 per prompt")
+    
     st.markdown("---")
-    st.info(
-        "**Why India and not Delhi city?**\n\n"
-        "DataForSEO's ChatGPT LLM Scraper only supports country-level "
-        "location codes. Delhi city code (1007765) returns a 40501 error. "
-        "India country code (2356) is confirmed working. "
-        "Add 'Delhi' to your prompts for city-specific results."
+    st.success(
+        "**State-Level Targeting Supported!**\n\n"
+        "The ChatGPT Scraper natively supports Country and State level targeting. "
+        "Standard Google City-specific codes (like 1007765 for Delhi) return a 40501 error, "
+        "but you can safely use the exact State name (e.g., 'Delhi,India') or the State Location Code."
     )
 
 # ── Inputs ────────────────────────────────────────────────────────────────────
@@ -39,10 +52,10 @@ your_domain = st.text_input(
 )
 
 st.subheader("📝 Your Prompts")
-st.caption("One prompt per line. Tip: include 'Delhi' in prompts for city-specific results e.g. 'best CA firm in Delhi'")
+st.caption("One prompt per line.")
 prompts_input = st.text_area(
     label="Prompts", height=160,
-    placeholder="best aluminium window manufacturers in Delhi\ntop acoustic glass window companies in Delhi\naluminium doors and windows myths and facts",
+    placeholder="best aluminium window manufacturers\ntop acoustic glass window companies\naluminium doors and windows myths and facts",
     label_visibility="collapsed",
 )
 
@@ -51,31 +64,26 @@ run_btn = st.button("🚀 Run — Find Cited Sources & Your Rank", type="primary
 # ── API Setup ─────────────────────────────────────────────────────────────────
 ENDPOINT = "https://api.dataforseo.com/v3/ai_optimization/chat_gpt/llm_scraper/live/advanced"
 
-# VERIFIED from official DataForSEO docs:
-# Confirmed working payload format (from docs example):
-#   { "language_code": "en", "location_code": 2840, "keyword": "...", "force_web_search": true }
-# India country-level location_code = 2356
-# Delhi city-level code 1007765 = NOT supported (returns 40501)
-INDIA_LOCATION_CODE = 2356
-
 def norm_domain(s: str) -> str:
     return (s or "").replace("https://","").replace("http://","") \
                     .replace("www.","").split("/")[0].split("?")[0].lower().strip()
 
-def call_api(keyword: str, login: str, password: str) -> dict:
+def call_api(keyword: str, login: str, password: str, p_key: str, p_val) -> dict:
     token = base64.b64encode(f"{login}:{password}".encode()).decode()
     headers = {
         "Authorization": f"Basic {token}",
         "Content-Type":  "application/json",
     }
-    # EXACT payload format confirmed by official DataForSEO docs:
-    # https://docs.dataforseo.com/v3/ai_optimization-chat_gpt-llm_scraper-live-advanced/
-    payload = [{
+    
+    # Dynamically inject either "location_name" or "location_code"
+    payload_dict = {
         "language_code":    "en",
-        "location_code":    INDIA_LOCATION_CODE,
+        p_key:              p_val,
         "keyword":          keyword,
         "force_web_search": True,
-    }]
+    }
+    
+    payload = [payload_dict]
     r = requests.post(ENDPOINT, headers=headers, json=payload, timeout=130)
     r.raise_for_status()
     return r.json()
@@ -172,7 +180,8 @@ if run_btn:
     for i, kw in enumerate(prompts):
         with st.spinner(f"Querying ChatGPT for: **{kw}**"):
             try:
-                raw           = call_api(kw, api_login, api_password)
+                # Pass the dynamically selected location key and value
+                raw           = call_api(kw, api_login, api_password, payload_key, loc_val)
                 raw_store[kw] = raw
                 rows, err     = parse_sources(raw, kw)
 
@@ -243,14 +252,14 @@ if run_btn:
     disp["Your Site"] = disp["Your Site"].apply(lambda x: "✅ YES" if x else "")
 
     st.dataframe(
-        disp.style.apply(style_row, axis=1).map(rank_color, subset=["Rank"]),  # fixed: applymap → map
+        disp.style.apply(style_row, axis=1).map(rank_color, subset=["Rank"]),
         use_container_width=True, height=500, hide_index=True
     )
 
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button(
         "⬇️ Download CSV", data=csv,
-        file_name=f"chatgpt_sources_india_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        file_name=f"chatgpt_sources_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv", use_container_width=True
     )
 
@@ -283,7 +292,7 @@ if run_btn:
             return ""
 
         st.dataframe(
-            pd.DataFrame(summary).style.map(color_rank, subset=["Your rank"]),  # fixed: applymap → map
+            pd.DataFrame(summary).style.map(color_rank, subset=["Your rank"]),
             use_container_width=True, hide_index=True
         )
 
